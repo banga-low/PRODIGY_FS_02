@@ -1,45 +1,82 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DashboardLayout from "../layouts/DashboardLayout";
-import AddEmployeeForm from "../components/AddEmployee";
-
-const employees = [
-  {
-    id: 1,
-    name: "Alice Kimani",
-    email: "alice@company.com",
-    phone: "0712345678",
-    department: "HR",
-    role: "HR Manager",
-    salary: "80,000",
-    hireDate: "2024-05-12",
-    gender: "Female",
-  },
-  {
-    id: 2,
-    name: "Brian Otieno",
-    email: "brian@company.com",
-    phone: "0722345678",
-    department: "Sales",
-    role: "Sales Rep",
-    salary: "60,000",
-    hireDate: "2024-04-25",
-    gender: "Male",
-  },
-  {
-    id: 3,
-    name: "Caroline Mwende",
-    email: "caroline@company.com",
-    phone: "0733456789",
-    department: "IT",
-    role: "Developer",
-    salary: "100,000",
-    hireDate: "2024-05-01",
-    gender: "Female",
-  },
-];
+import AddEmployee from "../components/AddEmployee";
+import axios from "axios";
 
 export default function Employees() {
+  const [employees, setEmployees] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const api = axios.create({
+    baseURL: "http://localhost:5000/api",
+  });
+
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const response = await api.get("/employees");
+        setEmployees(response.data);
+      } catch (err) {
+        setError(err.response?.data?.message || "Failed to load employees");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEmployees();
+  }, []);
+
+  const handleAddClick = () => {
+    setEditingEmployee(null);
+    setShowForm(true);
+  };
+
+  const handleEditClick = (employee) => {
+    setEditingEmployee(employee);
+    setShowForm(true);
+  };
+
+  const handleAddEmployee = async (newEmployee) => {
+    try {
+      let response;
+      if (editingEmployee) {
+        response = await api.put(`/employees/${editingEmployee._id}`, newEmployee);
+        setEmployees(employees.map(emp => 
+          emp._id === editingEmployee._id ? response.data : emp
+        ));
+      } else {
+        response = await api.post("/employees", newEmployee);
+        setEmployees([...employees, response.data]);
+      }
+      setShowForm(false);
+      setEditingEmployee(null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to save employee");
+    }
+  };
+
+  const handleDeleteEmployee = async (id) => {
+    try {
+      await api.delete(`/employees/${id}`);
+      setEmployees(employees.filter(emp => emp._id !== id));
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to delete employee");
+    }
+  };
+
+  if (loading) return (
+    <DashboardLayout>
+      <div className="p-4">Loading employees...</div>
+    </DashboardLayout>
+  );
+
+  if (error) return (
+    <DashboardLayout>
+      <div className="p-4 text-red-500">Error: {error}</div>
+    </DashboardLayout>
+  );
 
   return (
     <DashboardLayout>
@@ -47,7 +84,7 @@ export default function Employees() {
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-800">All Employees</h2>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={handleAddClick}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
           >
             {showForm ? "Close Form" : "+ Add Employee"}
@@ -56,11 +93,17 @@ export default function Employees() {
 
         {showForm && (
           <div className="bg-gray-100 p-4 rounded-lg shadow">
-            <AddEmployeeForm />
+            <AddEmployee
+              onAddEmployee={handleAddEmployee}
+              onClose={() => {
+                setShowForm(false);
+                setEditingEmployee(null);
+              }}
+              employee={editingEmployee}
+            />
           </div>
         )}
 
-        {/* DESKTOP TABLE */}
         <div className="hidden md:block overflow-x-auto rounded-xl shadow">
           <table className="min-w-full bg-white text-sm text-left">
             <thead className="bg-gray-100 text-gray-700 uppercase tracking-wider">
@@ -79,7 +122,7 @@ export default function Employees() {
             </thead>
             <tbody className="text-gray-700">
               {employees.map((emp, idx) => (
-                <tr key={emp.id} className="border-b hover:bg-gray-50">
+                <tr key={emp._id} className="border-b hover:bg-gray-50">
                   <td className="px-4 py-3">{idx + 1}</td>
                   <td className="px-4 py-3">{emp.name}</td>
                   <td className="px-4 py-3">{emp.email}</td>
@@ -90,8 +133,18 @@ export default function Employees() {
                   <td className="px-4 py-3">{emp.hireDate}</td>
                   <td className="px-4 py-3">{emp.gender}</td>
                   <td className="px-4 py-3 space-x-2">
-                    <button className="text-blue-600 hover:underline">Edit</button>
-                    <button className="text-red-600 hover:underline">Delete</button>
+                    <button 
+                      onClick={() => handleEditClick(emp)}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteEmployee(emp._id)}
+                      className="text-red-600 hover:underline"
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -99,10 +152,9 @@ export default function Employees() {
           </table>
         </div>
 
-        {/* MOBILE CARDS */}
         <div className="md:hidden space-y-4">
           {employees.map((emp) => (
-            <div key={emp.id} className="bg-white shadow rounded-lg p-4 space-y-1">
+            <div key={emp._id} className="bg-white shadow rounded-lg p-4 space-y-1">
               <p><span className="font-semibold">Name:</span> {emp.name}</p>
               <p><span className="font-semibold">Email:</span> {emp.email}</p>
               <p><span className="font-semibold">Phone:</span> {emp.phone}</p>
@@ -112,8 +164,18 @@ export default function Employees() {
               <p><span className="font-semibold">Date Hired:</span> {emp.hireDate}</p>
               <p><span className="font-semibold">Gender:</span> {emp.gender}</p>
               <div className="pt-2 space-x-4">
-                <button className="text-blue-600 hover:underline text-sm">Edit</button>
-                <button className="text-red-600 hover:underline text-sm">Delete</button>
+                <button 
+                  onClick={() => handleEditClick(emp)}
+                  className="text-blue-600 hover:underline text-sm"
+                >
+                  Edit
+                </button>
+                <button 
+                  onClick={() => handleDeleteEmployee(emp._id)}
+                  className="text-red-600 hover:underline text-sm"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}
